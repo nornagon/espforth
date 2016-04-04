@@ -129,8 +129,10 @@ cold_start:
   WORD DEFINITION MACROS ----------------------------------------------
 */
 
-  .set F_IMMED, 0x80
-  .set F_HIDDEN, 0x20
+  .set F_IMMED_BIT, 7
+  .set F_IMMED, (1 << F_IMMED_BIT)
+  .set F_HIDDEN_BIT, 5
+  .set F_HIDDEN, (1 << F_HIDDEN_BIT)
   .set F_LENMASK, 0x1f
 
   .set link, 0
@@ -739,11 +741,86 @@ _COMMA:
   .int INTERPRET      // interpret the next word
   .int BRANCH, -8     // and loop forever
 
+
+
+  /*
   defword "INTERPRET",9,,INTERPRET
   //.int KEY, EMIT
   //.int WORD, TELL
   .int LIT, 62, EMIT, WORD, FIND, ZBRANCH, -24, LIT, 42, EMIT
   .int EXIT
+  */
+
+  defword "TEST",4,,TEST
+  .int LIT, 42, EMIT, EXIT
+
+
+
+
+
+  defcode "INTERPRET",9,,INTERPRET
+  call0 _WORD         // returns a2 = length of word, a3 = pointer to 1st char
+  mov a12, a2         // save the length in case it's a number
+
+  // Is it in the dictionary?
+  call0 _FIND         // returns a2 = address of found word, or 0
+  beqz a2, 1f
+
+  // We're in the dictionary. Is it IMMEDIATE?
+  l8ui a4, a2, 4      // load len+flags
+  PUSH dsp, a4
+  call0 _TCFA         // returns a2 = address of codeword
+  POP dsp, a4
+  bbsi a4, F_IMMED_BIT, 4f  // if immediate, jump straight to executing
+  j 2f
+
+1: // Not in the dictionary, assume it's a number
+  mov a2, a12
+  call0 _NUMBER       // returns a2 = # remaining chars, a3 = parsed number
+  bnez a2, 6f         // if a2 != 0 then we have a parse error
+  // If we're compiling, we want to compile a number into | LIT | <n> | on the
+  // heap. If we're executing, we just want to push the number on the stack.
+  movi a0, var_STATE
+  l32i a0, a0, 0
+  beqz a0, 3f         // 0 = executing, so jump ahead
+
+  // Compiling a literal. LIT , <n> ,
+  mov a12, a3
+  movi a2, LIT
+  call0 _COMMA
+  mov a2, a12
+  call0 _COMMA
+  NEXT
+
+3: // Executing a literal, just push it on the stack.
+  PUSH dsp, a3
+  NEXT
+
+2: // Are we compiling or executing?
+  movi a0, var_STATE
+  l32i a0, a0, 0
+  beqz a0, 4f         // 0 = executing, so jump ahead
+
+  // We're compiling.
+  call0 _COMMA        // push the codeword onto the heap
+  NEXT
+
+4: // Executing - run it!
+  l32i a3, a2, 0
+  jx a3
+
+
+6: // Parse error
+  movi a2, parse_error
+  movi a0, ets_printf
+  callx0 a0
+  NEXT
+
+  .section .rodata
+parse_error:
+  .asciz "PARSE ERROR\r\n"
+
+
 
   defcode "K*",2,,KSTARS
   1:
@@ -769,6 +846,30 @@ _COMMA:
   .section .rodata
 debugstr:
   .asciz "nw: %08x"
+
+  defcode "SHOWSTACK",9,,SHOWSTACK
+  movi a12, var_S0
+  l32i a12, a12, 0 // a12 = top of stack
+1:
+  bge dsp, a12, 2f
+  addi a12, a12, -4
+  movi a2, stack_item
+  l32i a3, a12, 0
+  movi a0, ets_printf
+  callx0 a0
+  j 1b
+
+2:
+  movi a2, end_of_stack
+  movi a0, ets_printf
+  callx0 a0
+  NEXT
+
+  .section .rodata
+stack_item:
+  .asciz "\r\n %08x"
+end_of_stack:
+  .asciz "\r\n^- top of stack\r\n"
 
 
   defvar "LATEST",6,,LATEST,link
