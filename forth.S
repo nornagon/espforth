@@ -460,7 +460,7 @@ _EMIT:
   PUSH dsp, a2
   NEXT
 _WORD:
-  PUSH rsp, a0
+  PUSH dsp, a0
   movi a12, ' '+1
 1:
   call0 _KEY
@@ -477,7 +477,7 @@ _WORD:
   // return the length of the word in a2, and the pointer to the word in a3
   movi a3, word_buffer
   sub a2, a13, a3
-  POP rsp, a0
+  POP dsp, a0
   ret
 
   .section .bss
@@ -494,8 +494,8 @@ word_buffer:
 _NUMBER:
   movi a4, 0
   blti a2, 1, 5f
-  movi a12, var_BASE
-  l32i a12, a12, 0
+  movi a9, var_BASE
+  l32i a9, a9, 0
   movi a6, '9'+1
 
   movi a8, 0 // is_negative
@@ -508,7 +508,7 @@ _NUMBER:
   addi a3, a3, 1
 
 1:
-  mull a4, a4, a12
+  mull a4, a4, a9
   l8ui a5, a3, 0
   addi a3, a3, 1
   addi a5, a5, -'0'
@@ -518,7 +518,7 @@ _NUMBER:
   bltz a5, 4f
   addi a5, a5, 10
 3:
-  bge a5, a12, 4f  // digit >= base
+  bge a5, a9, 4f  // digit >= base
   add a4, a4, a5
   addi a2, a2, -1
   bnez a2, 1b
